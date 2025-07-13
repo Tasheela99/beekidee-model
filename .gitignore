@@ -6,6 +6,7 @@ __pycache__/
 # Virtual environment
 venv/
 env/
+output/
 
 # IDE/editor config files
 .vscode/
