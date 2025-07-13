@@ -1,0 +1,46 @@
+
+BACKGROUND NOISE ANALYSIS SUMMARY
+======================================
+Session Date       : 2025-07-14 01:01:55
+Session Duration   : 55.3 seconds
+Overall Attention  : 50.1%
+
+1. Noise Source Classification
+-------------------------------
+Time Range     | Detected Source     | Type
+-------------- | ------------------- | ---------------
+00:00-00:20    | Normal ambient      | Ambient
+00:21-00:40    | Background talking  | Conversational
+00:41-End      | Normal ambient      | Ambient
+
+2. Segmented Analysis
+-----------------------
+Time Range     | Avg. Noise (dB) | Attention (%) | Notes
+-------------- | --------------- | --------------|-------------------------------
+00:00-00:20    | 35              | 40.1%          | Normal ambient noise
+00:21-00:40    | 58              | 30.1%          | Background talking
+00:41-End      | 35              | 50.1%          | Attention improved
+
+3. Attention vs. Noise Correlation
+-----------------------------------
+Correlation Coefficient: -0.61
+(Higher noise is moderately associated with lower attention.)
+
+4. Environment Context
+------------------------
+Labeled Environment : Home
+Device Used         : Laptop (built-in mic)
+Mic Sensitivity     : Normal
+
+5. Noise Rating Summary
+-------------------------
+Overall Noise Level : 🟡 Moderate Noise
+Average dB          : 60.0 dB
+Peak dB             : 90.1 dB
+High Noise Duration : 251 seconds
+
+6. Observations & Recommendations
+----------------------------------
+- Background talking notably reduced attention levels.
+- Recommend switching to a quieter space or using a noise-canceling microphone.
+- Future sessions could benefit from real-time noise alerts.

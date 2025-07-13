@@ -1,0 +1,18 @@
+
+FACIAL EXPRESSION ANALYSIS SUMMARY
+======================================
+Session Duration: 55.3 seconds
+
+1. Emotion Distribution
+-------------------------------
+- Neutral: 75.9%
+- Sad: 10.3%
+- Angry: 10.3%
+- Happy: 3.4%
+
+2. Attention Impact
+-------------------------------
+- Neutral: 82.2% attention
+- Sad: 67.5% attention
+- Angry: 70.0% attention
+- Happy: 87.5% attention

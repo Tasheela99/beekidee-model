@@ -1,0 +1,31 @@
+
+DETAILED EYE TRACKING ANALYSIS SUMMARY
+======================================
+Session Date       : 2025-07-14 01:02:04
+Session Duration   : 2.1 seconds
+
+1. Overall Metrics
+-------------------------------
+Overall Eye Attention: 69.0%
+
+2. Blink Rate Analysis
+-------------------------------
+Average: 0.0 blinks/minute
+Optimal Range (14-18): 0.0% of samples
+Low Blink Rate (<8): 100.0% of samples
+High Blink Rate (>22): 0.0% of samples
+
+3. Gaze Concentration
+-------------------------------
+Average: 69.0%
+High Concentration (>80%): 0.0% of samples
+Low Concentration (<40%): 0.0% of samples
+
+4. Eye Aspect Ratio (EAR)
+-------------------------------
+Average: 0.269
+Threshold: 0.200
+
+5. Recommendations
+-------------------------------
+- Your blink rate is low, which may indicate intense focus but can lead to eye strain. Try to blink more consciously.

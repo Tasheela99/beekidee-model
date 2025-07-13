@@ -1,0 +1,21 @@
+
+EYE TRACKING ANALYSIS SUMMARY
+======================================
+Session Date       : 2025-07-14 01:01:55
+Session Duration   : 55.3 seconds
+Overall Score      : 60.5%
+
+1. Score Distribution
+-------------------------------
+Minimum: 47.9%
+Maximum: 67.7%
+Average: 60.5%
+
+2. Correlation with Overall Attention
+--------------------------------------
+Correlation Coefficient: 0.61
+
+3. Time Analysis
+-------------------------------
+Optimal Time (%): 0.0%
+Suboptimal Time (%): 6.9%
