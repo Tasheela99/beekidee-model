@@ -14,12 +14,7 @@ import seaborn as sns
 from matplotlib.ticker import MaxNLocator
 from datetime import datetime
 from deepface import DeepFace
-import firebase_admin
 from firebase_admin import db
-import logging
-
-# Configure logging
-logger = logging.getLogger(__name__)
 
 class PostureAnalyzer:
     def __init__(self):
@@ -60,10 +55,10 @@ class PostureAnalyzer:
         
         head_center_x = nose.x
         ear_center_x = (left_ear.x + right_ear.x) / 2
-        head_turn_ratio = (head_center_x - ear_center_x) / (right_ear.x - left_ear.x) if (right_ear.x - left_ear.x) != 0 else 0
+        head_turn_ratio = (head_center_x - ear_center_x) / (right_ear.x - left_ear.x)
         
         shoulder_center_x = (left_shoulder.x + right_shoulder.x) / 2
-        shoulder_turn_ratio = (nose.x - shoulder_center_x) / (right_shoulder.x - left_shoulder.x) if (right_shoulder.x - left_shoulder.x) != 0 else 0
+        shoulder_turn_ratio = (nose.x - shoulder_center_x) / (right_shoulder.x - left_shoulder.x)
         
         ear_center_y = (left_ear.y + right_ear.y) / 2
         shoulder_center_y = (left_shoulder.y + right_shoulder.y) / 2
@@ -121,24 +116,16 @@ class PostureAnalyzer:
                 "angle": head_turn,
                 "status": posture_status,
                 "score": posture_score,
-                "feedback": feedback,
-                "engagement_status": engagement_status
+                "feedback": feedback
             }
         except Exception:
-            return {
-                "angle": None, 
-                "status": "unknown", 
-                "score": 50, 
-                "feedback": "Cannot detect posture",
-                "engagement_status": "Unknown"
-            }
+            return {"angle": None, "status": "unknown", "score": 50, "feedback": "Cannot detect posture"}
 
     def calculate_posture_score(self, landmarks):
         result = self.analyze_posture(landmarks)
         self.posture_history.append(result["score"])
         self.last_angle = result.get("angle", None)
         self.last_feedback = result.get("feedback", "")
-        self.last_engagement_status = result.get("engagement_status", "Unknown")
         return result["score"]
 
     def get_latest_feedback(self):
@@ -147,9 +134,6 @@ class PostureAnalyzer:
     def get_latest_angle(self):
         return getattr(self, "last_angle", None)
         
-    def get_latest_engagement_status(self):
-        return getattr(self, "last_engagement_status", "Unknown")
-
 class EyeTracker:
     def __init__(self, min_blink_frames=3, max_blink_frames=20, fps=30):
         self.mp_face_mesh = mp.solutions.face_mesh
@@ -174,7 +158,7 @@ class EyeTracker:
 
         self.ear_history = deque(maxlen=3)
         self.gaze_history = deque(maxlen=5)
-
+        
         self.calibrated = False
         self.custom_ear_threshold = None
         self.calibration_open_ear = None
@@ -209,8 +193,8 @@ class EyeTracker:
         p3_p5 = [np.linalg.norm(np.array(eye[2]) - np.array(eye[4])) for eye in eye_points_list]
         p1_p4 = [np.linalg.norm(np.array(eye[0]) - np.array(eye[3])) for eye in eye_points_list]
         
-        ear_closed = (min(p2_p6) + min(p3_p5)) / (2 * max(p1_p4)) if max(p1_p4) != 0 else 0.25
-        ear_open = (max(p2_p6) + max(p3_p5)) / (2 * min(p1_p4)) if min(p1_p4) != 0 else 0.25
+        ear_closed = (min(p2_p6) + min(p3_p5)) / (2 * max(p1_p4))
+        ear_open = (max(p2_p6) + max(p3_p5)) / (2 * min(p1_p4))
         
         return (ear_open + ear_closed) / 2
 
@@ -320,8 +304,12 @@ class EmotionAnalyzer:
         self.face_cascade = cv2.CascadeClassifier(casc_path)
         self.last_emotion = "neutral"
         self.last_attention = 90
+        self.last_emotion_time = 0
 
-    def detect_emotion(self, frame):
+    def detect_emotion(self, frame, current_time):
+        if current_time - self.last_emotion_time < 1.0:  # Process emotion every 1 second
+            return self.last_emotion, self.last_attention
+        
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(gray, 1.3, 5)
         
@@ -339,6 +327,7 @@ class EmotionAnalyzer:
             attention = self.attention_map.get(emotion, 65)
             self.last_emotion = emotion
             self.last_attention = attention
+            self.last_emotion_time = current_time
             return emotion, attention
         except Exception:
             return self.last_emotion, self.last_attention
@@ -399,49 +388,38 @@ class NoiseDetector:
             return self.min_db
 
     def get_attention_level(self, db_level):
-        if db_level < 40:
-            return 100
-        elif db_level < 50:
-            return 85
-        elif db_level < 60:
-            return 60
-        elif db_level < 65:
-            return 40
-        elif db_level < 70:
-            return 20
-        else:
-            return 5
+        if db_level < 40: return 100  
+        elif db_level < 50: return 85   
+        elif db_level < 60: return 60   
+        elif db_level < 65: return 40  
+        elif db_level < 70: return 20   
+        else: return 5
 
 class RealTimeAttentionAnalyzer:
-    def __init__(self, student_id=None):
+    def __init__(self, student_id=None, session_id=None):
         self.posture_analyzer = PostureAnalyzer()
         self.eye_tracker = EyeTracker()
         self.emotion_analyzer = EmotionAnalyzer()
         self.noise_detector = NoiseDetector()
         self.data = {
-            'timestamp': [], 
-            'posture': [], 
-            'eye_attention': [],
-            'face_attention': [], 
-            'noise_attention': [], 
-            'overall': [],
-            'emotion': [], 
-            'gaze_score': [], 
-            'blink_rate': [], 
-            'ear_value': [],
-            'engagement_status': []
+            'timestamp': [], 'posture': [], 'eye_attention': [],
+            'face_attention': [], 'noise_attention': [], 'overall': [],
+            'emotion': [], 'gaze_score': [], 'blink_rate': [], 'ear_value': []
         }
         self.start_time = time.time()
         self.last_save = 0
+        self.last_process = 0
         self.is_tracking = False
+        self.student_id = student_id
+        self.session_id = session_id
         self.output_folder = self.create_output_folder()
         os.makedirs(self.output_folder, exist_ok=True)
         self.noise_thread = threading.Thread(target=self.noise_detector.start_monitoring, daemon=True)
         self.noise_detector.is_recording = True
+        self.firebase_queue = queue.Queue()
+        self.firebase_thread = threading.Thread(target=self.process_firebase_queue, daemon=True)
         self.noise_thread.start()
-        self.cap = None
-        self.student_id = student_id
-        self.session_id = None
+        self.firebase_thread.start()
 
     def create_output_folder(self):
         base = "output/attention_analysis"
@@ -450,52 +428,60 @@ class RealTimeAttentionAnalyzer:
         next_num = max([int(f.split("_")[1]) for f in existing]) + 1 if existing else 1
         return os.path.join(base, f"stu_{next_num:02d}")
 
-    def save_to_firebase(self, data_point):
+    def save_to_firebase(self, timestamp, posture, eye_attention, face_attention, noise_attention, overall, emotion):
         if not self.student_id or not self.session_id:
+            print("Error: student_id or session_id not provided")
             return
-        session_ref = db.reference('students').child(self.student_id).child('sessions').child(self.session_id).child('data')
-        for attempt in range(3):
+        
+        data = {
+            'timestamp': timestamp,
+            'posture': posture,
+            'eye_attention': eye_attention,
+            'face_attention': face_attention,
+            'noise_attention': noise_attention,
+            'overall_attention': overall,
+            'emotion': emotion
+        }
+        self.firebase_queue.put(data)
+
+    def process_firebase_queue(self):
+        while True:
             try:
-                serialized_data = {
-                    'timestamp': data_point['timestamp'],
-                    'posture': float(data_point['posture']) if data_point['posture'] is not None else None,
-                    'eye_attention': float(data_point['eye_attention']) if data_point['eye_attention'] is not None else None,
-                    'face_attention': float(data_point['face_attention']) if data_point['face_attention'] is not None else None,
-                    'noise_attention': float(data_point['noise_attention']) if data_point['noise_attention'] is not None else None,
-                    'overall': float(data_point['overall']) if data_point['overall'] is not None else None,
-                    'emotion': data_point['emotion'],
-                    'gaze_score': float(data_point['gaze_score']) if data_point['gaze_score'] is not None else None,
-                    'blink_rate': float(data_point['blink_rate']) if data_point['blink_rate'] is not None else None,
-                    'ear_value': float(data_point['ear_value']) if data_point['ear_value'] is not None else None,
-                    'engagement_status': data_point['engagement_status']
-                }
-                session_ref.push().set(serialized_data)
-                logger.debug(f"Firebase data saved: {serialized_data}")
-                break
-            except Exception as e:
-                logger.error(f"Failed to save to Firebase on attempt {attempt + 1}: {str(e)}")
-                if attempt == 2:
+                data = self.firebase_queue.get(timeout=1.0)
+                if data is None:
                     break
-                time.sleep(1)
+                ref = db.reference(f"students/{self.student_id}/sessions/{self.session_id}/data")
+                print(f"Pushing data: {data}")
+                ref.push(data)
+                print("Data saved successfully to Firebase.")
+                self.firebase_queue.task_done()
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print(f"Error saving to Firebase: {e}")
 
     def process_frame(self, frame):
         if not self.is_tracking:
             return frame
-        logger.debug("Processing frame")
+            
         current_time = time.time() - self.start_time
+        # Process frames every 0.1 seconds to reduce load
+        if current_time - self.last_process < 0.1:
+            self.display_overlay(frame, *self.get_latest_metrics())
+            return frame
+        
+        self.last_process = current_time
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pose_results = self.posture_analyzer.pose.process(rgb)
         posture_score = 50
         posture_angle = None
         posture_feedback = ""
-        engagement_status = "Unknown"
         if pose_results.pose_landmarks:
             landmarks = pose_results.pose_landmarks.landmark
             result = self.posture_analyzer.analyze_posture(landmarks)
             posture_score = result["score"]
             posture_angle = result["angle"]
             posture_feedback = result["feedback"]
-            engagement_status = result["engagement_status"]
             
         face_results = self.eye_tracker.face_mesh.process(rgb)
         eye_attention = 50
@@ -509,7 +495,7 @@ class RealTimeAttentionAnalyzer:
             landmarks = face_results.multi_face_landmarks[0].landmark
             h, w = frame.shape[:2]
             
-            emotion, face_attention = self.emotion_analyzer.detect_emotion(frame)
+            emotion, face_attention = self.emotion_analyzer.detect_emotion(frame, current_time)
             emotion = self.emotion_analyzer.smooth_emotion(emotion)
             
             left_eye = self.eye_tracker.extract_landmarks(landmarks, self.eye_tracker.LEFT_EYE_KEY, w, h)
@@ -525,7 +511,9 @@ class RealTimeAttentionAnalyzer:
                 eye_attention = self.eye_tracker.calculate_attention_level(gaze_score, blink_rate, avg_ear) * 100
                 ear_value = avg_ear
                 
-                self.eye_tracker.update_eye_metrics(gaze_score, blink_rate, avg_ear, current_time)
+                self.eye_tracker.update_eye_metrics(
+                    gaze_score, blink_rate, avg_ear, current_time
+                )
         
         noise_attention = 100
         if self.noise_detector.noise_data:
@@ -535,20 +523,7 @@ class RealTimeAttentionAnalyzer:
         scores = [posture_score, eye_attention, face_attention, noise_attention]
         overall = sum(w * s for w, s in zip(weights, scores))
         
-        if current_time - self.last_save >= 0.1:  # Reduced from 0.5 for more frequent saves
-            data_point = {
-                'timestamp': current_time,
-                'posture': posture_score,
-                'eye_attention': eye_attention,
-                'face_attention': face_attention,
-                'noise_attention': noise_attention,
-                'overall': overall,
-                'emotion': emotion,
-                'gaze_score': gaze_score * 100,
-                'blink_rate': blink_rate,
-                'ear_value': ear_value,
-                'engagement_status': engagement_status
-            }
+        if current_time - self.last_save >= 1.0:  # Save every 1 second
             self.data['timestamp'].append(current_time)
             self.data['posture'].append(posture_score)
             self.data['eye_attention'].append(eye_attention)
@@ -559,24 +534,41 @@ class RealTimeAttentionAnalyzer:
             self.data['gaze_score'].append(gaze_score * 100)
             self.data['blink_rate'].append(blink_rate)
             self.data['ear_value'].append(ear_value)
-            self.data['engagement_status'].append(engagement_status)
-            logger.debug(f"Data appended: {data_point}")
             self.last_save = current_time
             
-            # Save to Firebase
-            self.save_to_firebase(data_point)
+            # Queue data for Firebase
+            self.save_to_firebase(
+                timestamp=current_time,
+                posture=posture_score,
+                eye_attention=eye_attention,
+                face_attention=face_attention,
+                noise_attention=noise_attention,
+                overall=overall,
+                emotion=emotion
+            )
         
         self.display_overlay(frame, posture_score, eye_attention, 
-                            face_attention, noise_attention, overall, emotion, engagement_status)
+                            face_attention, noise_attention, overall, emotion)
         return frame
 
-    def display_overlay(self, frame, posture, eye, face, noise, overall, emotion, engagement_status):
+    def get_latest_metrics(self):
+        # Return the latest metrics for display when skipping processing
+        return (
+            self.data['posture'][-1] if self.data['posture'] else 50,
+            self.data['eye_attention'][-1] if self.data['eye_attention'] else 50,
+            self.data['face_attention'][-1] if self.data['face_attention'] else 50,
+            self.data['noise_attention'][-1] if self.data['noise_attention'] else 100,
+            self.data['overall'][-1] if self.data['overall'] else 50,
+            self.data['emotion'][-1] if self.data['emotion'] else "neutral"
+        )
+
+    def display_overlay(self, frame, posture, eye, face, noise, overall, emotion):
         y_start = 30
         spacing = 30
-        cv2.rectangle(frame, (10, 10), (350, 220), (0, 0, 0), -1)
+        cv2.rectangle(frame, (10, 10), (350, 190), (0, 0, 0), -1)
         
         texts = [
-            f"Posture: {posture:.1f}% ({engagement_status})",
+            f"Posture: {posture:.1f}",
             f"Eyes: {eye:.1f}%",
             f"Face: {face:.1f}% ({emotion})",
             f"Noise: {noise:.1f}%",
@@ -593,16 +585,16 @@ class RealTimeAttentionAnalyzer:
         
         for i, (text, color) in enumerate(zip(texts, colors)):
             cv2.putText(frame, text, (20, y_start + i*spacing), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
         
-        cv2.rectangle(frame, (20, 190), (320, 210), (50, 50, 50), -1)
-        cv2.rectangle(frame, (20, 190), (20 + int(3 * overall), 210), 
-                  (0, 255, 0) if overall > 70 else (0, 165, 255) if overall > 50 else (0, 0, 255), -1)
+        cv2.rectangle(frame, (20, 160), (320, 180), (50, 50, 50), -1)
+        cv2.rectangle(frame, (20, 160), (20 + int(3 * overall), 180), 
+                      (0, 255, 0) if overall > 70 else (0, 165, 255) if overall > 50 else (0, 0, 255), -1)
                       
         status_text = "TRACKING" if self.is_tracking else "PAUSED - Press 's' to start"
         status_color = (0, 255, 0) if self.is_tracking else (0, 0, 255)
         cv2.putText(frame, status_text, (frame.shape[1] - 300, 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2)
 
     def create_feature_scatter(self, folder, df, feature, title, xlabel):
         plt.figure()
@@ -626,7 +618,6 @@ class RealTimeAttentionAnalyzer:
         
         summary = f"""
 {title.upper()}
-Correlation with Overall Attention: {correlation:.2f}
 """
         with open(os.path.join(folder, "summary.txt"), 'w') as f:
             f.write(summary)
@@ -654,8 +645,8 @@ Correlation with Overall Attention: {correlation:.2f}
         
         plt.figure()
         sns.regplot(x=noise_levels, y=attention_levels, 
-                   scatter_kws={'alpha':0.5, 's':30}, 
-                   line_kws={'color':'red', 'linewidth':1.5})
+                    scatter_kws={'alpha':0.5, 's':30}, 
+                    line_kws={'color':'red', 'linewidth':1.5})
         plt.xlabel('Noise Level (dB)')
         plt.ylabel('Attention Score (%)')
         plt.title('Noise vs Attention')
@@ -703,7 +694,7 @@ Time Range     | Avg. Noise (dB) | Attention (%) | Notes
 
 3. Attention vs. Noise Correlation
 -----------------------------------
-Correlation Coefficient: -0.61
+Correlation Coefficient (r): -0.61
 (Higher noise is moderately associated with lower attention.)
 
 4. Environment Context
@@ -730,7 +721,6 @@ High Noise Duration : {sum(1 for d in noise_levels if d > 55)} seconds
 
     def save_results(self):
         if not self.data['timestamp']:
-            logger.warning("No data to save in save_results")
             return
         
         df = pd.DataFrame(self.data)
@@ -751,9 +741,6 @@ High Noise Duration : {sum(1 for d in noise_levels if d > 55)} seconds
         
         self.save_eye_details(eye_detail_folder, df, session_date, session_duration)
         
-        engaged_percentage = (self.posture_analyzer.engaged_duration / session_duration * 100) if session_duration > 0 else 0
-        distracted_percentage = (self.posture_analyzer.distracted_duration / session_duration * 100) if session_duration > 0 else 0
-        
         report = f"""
 REAL-TIME ATTENTION ANALYSIS SUMMARY
 ======================================
@@ -763,7 +750,7 @@ Overall Attention  : {df['overall'].mean():.1f}%
 
 1. Component Scores
 -------------------------------
-- Posture: {df['posture'].mean():.1f}% (Engaged: {engaged_percentage:.1f}%, Distracted: {distracted_percentage:.1f}%)
+- Posture: {df['posture'].mean():.1f}%
 - Eye Attention: {df['eye_attention'].mean():.1f}%
 - Facial Expression: {df['face_attention'].mean():.1f}%
 - Background Noise: {df['noise_attention'].mean():.1f}%
@@ -775,16 +762,9 @@ Overall Attention  : {df['overall'].mean():.1f}%
         for emotion, percentage in emotion_percentages.items():
             report += f"- {emotion.capitalize()}: {percentage:.1f}%\n"
             
-        report += f"""
-3. Engagement Distribution
--------------------------------
-- Engaged: {engaged_percentage:.1f}%
-- Distracted: {distracted_percentage:.1f}%
-
-4. Observations & Recommendations
-----------------------------------
-{self.generate_recommendations(df)}
-"""
+        report += "\n3. Observations & Recommendations\n----------------------------------\n"
+        report += self.generate_recommendations(df)
+        
         with open(os.path.join(self.output_folder, "summary.txt"), 'w') as f:
             f.write(report)
         
@@ -831,31 +811,7 @@ Overall Attention  : {df['overall'].mean():.1f}%
         
         self.create_noise_graphs(noise_folder, session_date, session_duration)
         
-        plt.figure()
-        engagement_counts = df['engagement_status'].value_counts()
-        sns.barplot(x=engagement_counts.index, 
-                    y=engagement_counts.values, 
-                    hue=engagement_counts.index,
-                    palette='viridis',
-                    legend=False)
-        plt.xlabel('Engagement Status')
-        plt.ylabel('Count')
-        plt.title('Engagement Status Distribution During Session')
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.savefig(os.path.join(body_folder, "engagement_distribution.png"))
-        plt.close()
-        
-        engagement_summary = f"""
-ENGAGEMENT DISTRIBUTION SUMMARY
-======================================
-- Engaged: {engaged_percentage:.1f}%
-- Distracted: {distracted_percentage:.1f}%
-"""
-        with open(os.path.join(body_folder, "engagement_summary.txt"), 'w') as f:
-            f.write(engagement_summary)
-        
-        logger.info(f"Local results saved to: {self.output_folder}")
+        print(f"Results saved to: {self.output_folder}")
 
     def generate_recommendations(self, df):
         recommendations = []
@@ -1144,47 +1100,61 @@ Threshold: {self.eye_tracker.ear_threshold:.3f}
         
         return "\n".join(recommendations)
 
+    def stop(self):
+        self.is_tracking = False
+        self.noise_detector.is_recording = False
+        self.firebase_queue.put(None)  # Signal Firebase thread to stop
+        self.noise_thread.join(timeout=1.0)
+        self.firebase_thread.join(timeout=1.0)
+        self.save_results()
+
     def run(self):
-        self.cap = cv2.VideoCapture(0)
-        if not self.cap.isOpened():
-            logger.error("Failed to open webcam. Trying alternative index...")
-            self.cap = cv2.VideoCapture(1)
-            if not self.cap.isOpened():
-                logger.error("No webcam available")
-                return
-        logger.debug(f"Starting run with is_tracking: {self.is_tracking}, cap opened: {self.cap.isOpened()}")
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap = cv2.VideoCapture(0)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap.set(cv2.CAP_PROP_FPS, 30)
         
         print("Real-time Attention Analysis System")
         print("===================================")
-        print("Start tracking via the web interface")
+        print("Press 's' to start tracking")
         print("Press 'q' to save results and quit")
+        print("Press 'p' to pause tracking during session")
+        
+        self.is_tracking = False
         
         try:
-            while self.cap.isOpened():
-                ret, frame = self.cap.read()
+            while cap.isOpened():
+                ret, frame = cap.read()
                 if not ret:
-                    logger.warning("Failed to read frame from webcam")
-                    time.sleep(0.1)
                     continue
                 
                 frame = cv2.flip(frame, 1)
                 frame = self.process_frame(frame)
                 
+                if not self.is_tracking:
+                    cv2.putText(frame, "Press 's' to start tracking", 
+                                (frame.shape[1]//2 - 200, frame.shape[0]//2), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                
                 cv2.imshow('Attention Analysis', frame)
                 
                 key = cv2.waitKey(1) & 0xFF
-                if key == ord('q'):
+                if key == ord('s'):
+                    self.is_tracking = True
+                    self.start_time = time.time()
+                    self.data = {k: [] for k in self.data}
+                    print("Tracking started...")
+                elif key == ord('q'):
                     break
+                elif key == ord('p'):
+                    self.is_tracking = not self.is_tracking
+                    status = "PAUSED" if not self.is_tracking else "RESUMED"
+                    print(f"Tracking {status}")
         finally:
-            if self.cap:
-                self.cap.release()
+            cap.release()
             cv2.destroyAllWindows()
-            self.noise_detector.is_recording = False
-            self.noise_thread.join(timeout=1.0)
-            self.save_results()
-            logger.info("Analysis complete! Local results saved.")
+            self.stop()
+            print("Analysis complete! Results saved.")
 
 if __name__ == "__main__":
     analyzer = RealTimeAttentionAnalyzer()
