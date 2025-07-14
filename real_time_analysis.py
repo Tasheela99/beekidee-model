@@ -307,7 +307,7 @@ class EmotionAnalyzer:
         self.last_emotion_time = 0
 
     def detect_emotion(self, frame, current_time):
-        if current_time - self.last_emotion_time < 1.0:  # Process emotion every 1 second
+        if current_time - self.last_emotion_time < 1.0:
             return self.last_emotion, self.last_attention
         
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -406,6 +406,10 @@ class RealTimeAttentionAnalyzer:
             'face_attention': [], 'noise_attention': [], 'overall': [],
             'emotion': [], 'gaze_score': [], 'blink_rate': [], 'ear_value': []
         }
+        self.interval_data = []  # Store 10-second interval overall attention
+        self.interval_data_lock = threading.Lock()  # Lock for thread-safe access
+        self.current_interval_start = 0
+        self.interval_scores = []  # Temporary list for current interval scores
         self.start_time = time.time()
         self.last_save = 0
         self.last_process = 0
@@ -465,7 +469,6 @@ class RealTimeAttentionAnalyzer:
             return frame
             
         current_time = time.time() - self.start_time
-        # Process frames every 0.1 seconds to reduce load
         if current_time - self.last_process < 0.1:
             self.display_overlay(frame, *self.get_latest_metrics())
             return frame
@@ -523,7 +526,21 @@ class RealTimeAttentionAnalyzer:
         scores = [posture_score, eye_attention, face_attention, noise_attention]
         overall = sum(w * s for w, s in zip(weights, scores))
         
-        if current_time - self.last_save >= 1.0:  # Save every 1 second
+        # Accumulate scores for 10-second interval
+        self.interval_scores.append(overall)
+        if current_time >= self.current_interval_start + 10:
+            if self.interval_scores:
+                avg_overall = sum(self.interval_scores) / len(self.interval_scores)
+                with self.interval_data_lock:
+                    self.interval_data.append({
+                        'interval_start': self.current_interval_start,
+                        'overall_attention': avg_overall
+                    })
+                print(f"10-second interval ({self.current_interval_start:.1f}s): Overall Attention = {avg_overall:.1f}%")
+            self.interval_scores = []
+            self.current_interval_start += 10
+        
+        if current_time - self.last_save >= 1.0:
             self.data['timestamp'].append(current_time)
             self.data['posture'].append(posture_score)
             self.data['eye_attention'].append(eye_attention)
@@ -536,7 +553,6 @@ class RealTimeAttentionAnalyzer:
             self.data['ear_value'].append(ear_value)
             self.last_save = current_time
             
-            # Queue data for Firebase
             self.save_to_firebase(
                 timestamp=current_time,
                 posture=posture_score,
@@ -552,7 +568,6 @@ class RealTimeAttentionAnalyzer:
         return frame
 
     def get_latest_metrics(self):
-        # Return the latest metrics for display when skipping processing
         return (
             self.data['posture'][-1] if self.data['posture'] else 50,
             self.data['eye_attention'][-1] if self.data['eye_attention'] else 50,
@@ -1103,9 +1118,18 @@ Threshold: {self.eye_tracker.ear_threshold:.3f}
     def stop(self):
         self.is_tracking = False
         self.noise_detector.is_recording = False
-        self.firebase_queue.put(None)  # Signal Firebase thread to stop
+        self.firebase_queue.put(None)
         self.noise_thread.join(timeout=1.0)
         self.firebase_thread.join(timeout=1.0)
+        # Save any remaining interval data
+        if self.interval_scores:
+            avg_overall = sum(self.interval_scores) / len(self.interval_scores)
+            with self.interval_data_lock:
+                self.interval_data.append({
+                    'interval_start': self.current_interval_start,
+                    'overall_attention': avg_overall
+                })
+            print(f"Final interval ({self.current_interval_start:.1f}s): Overall Attention = {avg_overall:.1f}%")
         self.save_results()
 
     def run(self):
@@ -1142,6 +1166,9 @@ Threshold: {self.eye_tracker.ear_threshold:.3f}
                 if key == ord('s'):
                     self.is_tracking = True
                     self.start_time = time.time()
+                    self.current_interval_start = 0
+                    self.interval_scores = []
+                    self.interval_data = []
                     self.data = {k: [] for k in self.data}
                     print("Tracking started...")
                 elif key == ord('q'):

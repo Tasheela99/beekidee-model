@@ -6,9 +6,12 @@ from flask import Flask, render_template, jsonify, request, Response
 import threading
 import cv2
 from real_time_analysis import RealTimeAttentionAnalyzer
+from flask_cors import CORS
 
 # Initialize Flask app
 app = Flask(__name__)
+
+CORS(app, resources={r"/*": {"origins": "http://localhost:4200"}}) 
 
 # Firebase Admin initialization
 cred = credentials.Certificate("key.json")  # Replace with the actual path
@@ -26,22 +29,20 @@ def generate_frames():
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    cap.set(cv2.CAP_PROP_FPS, 30)  # Set camera FPS to ensure smoother capture
+    cap.set(cv2.CAP_PROP_FPS, 30)
 
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             continue
 
-        frame = cv2.flip(frame, 1)  # Flip the frame horizontally
+        frame = cv2.flip(frame, 1)
         if analyzer and is_tracking:
-            frame = analyzer.process_frame(frame)  # Process the frame using the real-time analyzer
+            frame = analyzer.process_frame(frame)
 
-        # Encode the frame to be sent to the frontend
-        ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])  # Reduce JPEG quality for faster streaming
+        ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
         frame = buffer.tobytes()
 
-        # Yield the frame in a specific format
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
 
@@ -49,14 +50,12 @@ def generate_frames():
 
 @app.route('/')
 def index():
-    # Show the video feed and controls for starting/stopping the tracking
     return render_template('index.html')
 
 @app.route('/start_tracking', methods=['POST'])
 def start_tracking():
     global is_tracking, analyzer
 
-    # Get student_id and session_id from the POST request body
     student_id = request.json.get("student_id")
     session_id = request.json.get("session_id")
     
@@ -68,7 +67,6 @@ def start_tracking():
         analyzer = RealTimeAttentionAnalyzer(student_id=student_id, session_id=session_id)
         analyzer.is_tracking = True
         
-        # Start a separate thread for the real-time analyzer
         tracking_thread = threading.Thread(target=analyzer.run)
         tracking_thread.daemon = True
         tracking_thread.start()
@@ -81,7 +79,6 @@ def start_tracking():
 def pause_tracking():
     global is_tracking, analyzer
     
-    # Get student_id from the POST request body
     student_id = request.json.get("student_id")
     
     if not student_id:
@@ -99,7 +96,6 @@ def pause_tracking():
 def stop_tracking():
     global is_tracking, analyzer
 
-    # Get student_id from the POST request body
     student_id = request.json.get("student_id")
     
     if not student_id:
@@ -109,7 +105,7 @@ def stop_tracking():
         is_tracking = False
         if analyzer:
             analyzer.is_tracking = False
-            analyzer.stop()  # Call stop to clean up resources
+            analyzer.stop()
         analyzer = None
         return jsonify({'status': 'Tracking stopped!', 'student_id': student_id})
     else:
@@ -117,7 +113,6 @@ def stop_tracking():
 
 @app.route('/get_attention_data/<student_id>', methods=['GET'])
 def get_attention_data(student_id):
-    # Fetch data specific to the student from Firebase
     if analyzer and analyzer.data['timestamp']:
         latest_data = analyzer.data
         return jsonify({
@@ -127,9 +122,22 @@ def get_attention_data(student_id):
     else:
         return jsonify({'student_id': student_id, 'message': 'No data available'})
 
+@app.route('/get_interval_attention/<student_id>', methods=['GET'])
+def get_interval_attention(student_id):
+    if analyzer and analyzer.interval_data:
+        with analyzer.interval_data_lock:
+            return jsonify({
+                'student_id': student_id,
+                'interval_data': [
+                    {'interval_start': d['interval_start'], 'overall_attention': d['overall_attention']}
+                    for d in analyzer.interval_data
+                ]
+            })
+    else:
+        return jsonify({'student_id': student_id, 'message': 'No interval data available'})
+
 @app.route('/video_feed')
 def video_feed():
-    # Stream the video feed to the frontend
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == "__main__":
