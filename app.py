@@ -23,6 +23,7 @@ firebase_admin.initialize_app(cred, {
 analyzer = None
 is_tracking = False
 
+s
 def generate_frames():
     global is_tracking, analyzer
     
